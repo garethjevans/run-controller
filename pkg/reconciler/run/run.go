@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/tektoncd/pipeline/pkg/names"
+	"github.com/tektoncd/pipeline/pkg/substitution"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/client-go/dynamic"
@@ -132,7 +133,7 @@ func (c *Reconciler) reconcile(ctx context.Context, run *v1alpha1.Run) error {
 	logger := logging.FromContext(ctx)
 
 	// Get the TaskLoop referenced by the Run
-	u, err := c.getUnstructuredFromRun(run)
+	u, err := c.GetUnstructuredFromRun(run)
 	if err != nil {
 		return fmt.Errorf("unable to get unstructured: %+v", err)
 	}
@@ -174,14 +175,22 @@ func ParseGroupVersionResource(apiVersion string, kind string) schema.GroupVersi
 	}
 }
 
-func (c *Reconciler) getUnstructuredFromRun(run *v1alpha1.Run) (*unstructured.Unstructured, error) {
+func (c *Reconciler) GetUnstructuredFromRun(run *v1alpha1.Run) (*unstructured.Unstructured, error) {
 	// Create name for Unstructured from Run name, kind, all lowercase
 	unstructuredName := names.SimpleNameGenerator.RestrictLengthWithRandomSuffix(
 		strings.ToLower(
 			fmt.Sprintf("%s-%s", run.Name, run.Spec.Spec.Kind)))
 
+	replacements := make(map[string]string)
+	for _, param := range run.Spec.Params {
+		replacements["params."+param.Name] = param.Value.StringVal
+	}
+
+	raw := string(run.Spec.Spec.Spec.Raw)
+	updated := substitution.ApplyReplacements(raw, replacements)
+
 	m := map[string]interface{}{}
-	err := json.Unmarshal(run.Spec.Spec.Spec.Raw, &m)
+	err := json.Unmarshal([]byte(updated), &m)
 	if err != nil {
 		return nil, fmt.Errorf("unable to unmarshal: %+v", err)
 	}

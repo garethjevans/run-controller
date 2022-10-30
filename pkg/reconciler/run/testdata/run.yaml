@@ -1,0 +1,55 @@
+apiVersion: tekton.dev/v1alpha1
+kind: Run
+metadata:
+  annotations:
+  creationTimestamp: "2022-10-28T14:30:34Z"
+  generation: 2
+  labels:
+    tekton.dev/memberOf: tasks
+    tekton.dev/pipeline: supply-chain-pipeline
+    tekton.dev/pipelineRun: supply-chain-pipeline
+    tekton.dev/pipelineTask: image-provider
+  name: supply-chain-pipeline-image-provider
+  namespace: dev
+  ownerReferences:
+  - apiVersion: tekton.dev/v1beta1
+    blockOwnerDeletion: true
+    controller: true
+    kind: PipelineRun
+    name: supply-chain-pipeline
+    uid: 821542c7-4516-421c-9ab4-fa18864849a5
+  resourceVersion: "841775175"
+  uid: 47462770-dfb5-4bf9-b3d0-14a258191ad5
+spec:
+  params:
+  - name: revision
+    value: 0827e6b753778b17243b188e6a29211457e69d6a
+  - name: url
+    value: https://github.com/garethjevans/gevans-petclinic
+  podTemplate:
+    securityContext:
+      fsGroup: 65532
+  serviceAccountName: default
+  spec:
+    apiVersion: kpack.io/v1alpha2
+    kind: Build
+    metadata: {}
+    spec:
+      builder:
+        image: gcr.io/ship-interfaces-dev/build-service:clusterbuilder-default@sha256:5f9cfc40470ba9f4b7ec10a813c62da7396783607647ba555dfab8755c7fa9a6
+      env:
+      - name: BP_OCI_SOURCE
+        value: main/0827e6b753778b17243b188e6a29211457e69d6a
+      - name: BP_JVM_VERSION
+        value: "17"
+      resources: {}
+      runImage:
+        image: gcr.io/ship-interfaces-dev/build-service@sha256:f8dbbf8fa654c1731e039671a6683b97d3e4a2cd8344e9e99409cad8ecaf5f95
+      serviceAccountName: default
+      source:
+        git:
+          revision: $(params.revision)
+          url: $(params.url)
+      tags:
+      - gcr.io/ship-interfaces-dev/supply-chain/gevans-petclinic-dev
+      - gcr.io/ship-interfaces-dev/supply-chain/gevans-petclinic-dev:b1.20221026.171808

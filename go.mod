@@ -3,9 +3,10 @@ module github.com/garethjevans/run-controller
 go 1.18
 
 require (
+	github.com/ghodss/yaml v1.0.0
 	github.com/hashicorp/go-multierror v1.1.1
+	github.com/stretchr/testify v1.8.0
 	github.com/tektoncd/pipeline v0.40.2
-	go.uber.org/zap v1.23.0
 	gomodules.xyz/jsonpatch/v2 v2.2.0
 	k8s.io/api v0.25.3
 	k8s.io/apimachinery v0.25.3
@@ -52,8 +53,8 @@ require (
 	github.com/modern-go/reflect2 v1.0.2 // indirect
 	github.com/munnerz/goautoneg v0.0.0-20191010083416-a7dc8b61c822 // indirect
 	github.com/opencontainers/go-digest v1.0.0 // indirect
-	github.com/pivotal/kpack v0.7.1 // indirect
 	github.com/pkg/errors v0.9.1 // indirect
+	github.com/pmezard/go-difflib v1.0.0 // indirect
 	github.com/prometheus/client_golang v1.13.0 // indirect
 	github.com/prometheus/client_model v0.3.0 // indirect
 	github.com/prometheus/common v0.37.0 // indirect
@@ -64,6 +65,7 @@ require (
 	go.uber.org/atomic v1.10.0 // indirect
 	go.uber.org/automaxprocs v1.5.1 // indirect
 	go.uber.org/multierr v1.8.0 // indirect
+	go.uber.org/zap v1.23.0 // indirect
 	golang.org/x/net v0.1.0 // indirect
 	golang.org/x/oauth2 v0.1.0 // indirect
 	golang.org/x/sync v0.1.0 // indirect
