@@ -10,3 +10,7 @@ run:
 .PHONY: ko
 ko:
 	KO_DOCKER_REPO=ghcr.io/garethjevans/run-controller ko build
+
+.PHONY: test
+test:
+	go test ./...
