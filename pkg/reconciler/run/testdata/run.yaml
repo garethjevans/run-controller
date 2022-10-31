@@ -39,7 +39,7 @@ spec:
         image: gcr.io/ship-interfaces-dev/build-service:clusterbuilder-default@sha256:5f9cfc40470ba9f4b7ec10a813c62da7396783607647ba555dfab8755c7fa9a6
       env:
       - name: BP_OCI_SOURCE
-        value: main/0827e6b753778b17243b188e6a29211457e69d6a
+        value: main/$(params.revision)
       - name: BP_JVM_VERSION
         value: "17"
       resources: {}

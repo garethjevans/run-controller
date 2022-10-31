@@ -4,6 +4,7 @@ go 1.18
 
 require (
 	github.com/ghodss/yaml v1.0.0
+	github.com/go-logr/logr v1.2.3
 	github.com/hashicorp/go-multierror v1.1.1
 	github.com/stretchr/testify v1.8.0
 	github.com/tektoncd/pipeline v0.40.2
@@ -12,6 +13,7 @@ require (
 	k8s.io/apimachinery v0.25.3
 	k8s.io/client-go v0.25.3
 	knative.dev/pkg v0.0.0-20221027143007-728dfd8e2862
+	sigs.k8s.io/controller-runtime v0.13.0
 )
 
 require (
@@ -28,7 +30,6 @@ require (
 	github.com/evanphx/json-patch/v5 v5.6.0 // indirect
 	github.com/go-kit/log v0.2.1 // indirect
 	github.com/go-logfmt/logfmt v0.5.1 // indirect
-	github.com/go-logr/logr v1.2.3 // indirect
 	github.com/go-openapi/jsonpointer v0.19.5 // indirect
 	github.com/go-openapi/jsonreference v0.20.0 // indirect
 	github.com/go-openapi/swag v0.22.3 // indirect

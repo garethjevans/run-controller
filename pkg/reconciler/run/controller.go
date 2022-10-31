@@ -2,7 +2,12 @@ package run
 
 import (
 	"context"
+	pipelinecontroller "github.com/tektoncd/pipeline/pkg/controller"
+	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/runtime/schema"
+	"k8s.io/client-go/dynamic/dynamicinformer"
 	"knative.dev/pkg/injection/clients/dynamicclient"
+	"time"
 
 	pipelineclient "github.com/tektoncd/pipeline/pkg/client/injection/client"
 	runinformer "github.com/tektoncd/pipeline/pkg/client/injection/informers/pipeline/v1alpha1/run"
@@ -23,7 +28,10 @@ func NewController(namespace string) func(context.Context, configmap.Watcher) *c
 		pipelineClientSet := pipelineclient.Get(ctx)
 		runInformer := runinformer.Get(ctx)
 		dynamicClient := dynamicclient.Get(ctx)
-		//buildInformer := buildinformer.Get(ctx)
+
+		resource := schema.GroupVersionResource{Group: "kpack.io", Version: "v1alpha2", Resource: "builds"}
+		factory := dynamicinformer.NewFilteredDynamicSharedInformerFactory(dynamicClient, time.Minute, corev1.NamespaceAll, nil)
+		dynamicInformer := factory.ForResource(resource).Informer()
 
 		c := &Reconciler{
 			pipelineClientSet: pipelineClientSet,
@@ -41,16 +49,16 @@ func NewController(namespace string) func(context.Context, configmap.Watcher) *c
 
 		// Add event handler for Runs
 		runInformer.Informer().AddEventHandler(cache.FilteringResourceEventHandler{
-			//FilterFunc: pipelinecontroller.FilterRunRef("kpack.io/v1alpha2", "Build"),
-			FilterFunc: all,
-			Handler:    controller.HandleAll(impl.Enqueue),
+			FilterFunc: pipelinecontroller.FilterRunRef(resource.GroupVersion().String(), "Build"),
+			//FilterFunc: all,
+			Handler: controller.HandleAll(impl.Enqueue),
 		})
 
 		// Add event handler for TaskRuns controlled by Run
-		//dynamicInformer.Informer().AddEventHandler(cache.FilteringResourceEventHandler{
-		//	FilterFunc: pipelinecontroller.FilterOwnerRunRef(runInformer.Lister(), "kpack.io/v1alpha2", "Build"),
-		//	Handler:    controller.HandleAll(impl.EnqueueControllerOf),
-		//})
+		dynamicInformer.AddEventHandler(cache.FilteringResourceEventHandler{
+			FilterFunc: pipelinecontroller.FilterOwnerRunRef(runInformer.Lister(), resource.GroupVersion().String(), "Build"),
+			Handler:    controller.HandleAll(impl.EnqueueControllerOf),
+		})
 
 		return impl
 	}

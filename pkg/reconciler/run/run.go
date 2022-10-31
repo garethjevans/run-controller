@@ -132,23 +132,56 @@ func (c *Reconciler) ReconcileKind(ctx context.Context, run *v1alpha1.Run) pkgre
 func (c *Reconciler) reconcile(ctx context.Context, run *v1alpha1.Run) error {
 	logger := logging.FromContext(ctx)
 
-	// Get the TaskLoop referenced by the Run
-	u, err := c.GetUnstructuredFromRun(run)
-	if err != nil {
-		return fmt.Errorf("unable to get unstructured: %+v", err)
-	}
-
-	logger.Infof("Ready to create %+v", u)
-
 	gvr := ParseGroupVersionResource(run.Spec.Spec.APIVersion, run.Spec.Spec.Kind)
-	logger.Infof("Creating new unstructured %+v", gvr)
 
-	created, err := c.dynamicClient.Resource(gvr).Namespace(u.GetNamespace()).Create(ctx, u, metav1.CreateOptions{})
+	existing, err := c.FindExistingResourceForRun(ctx, gvr, run)
 	if err != nil {
-		return fmt.Errorf("unable to create unstructured: %+v", err)
+		return fmt.Errorf("error finding existing unstructured for run: %+v", err)
 	}
 
-	logger.Infof("Createed %+v", created)
+	if existing == nil {
+		logger.Infof("Resource %s already NOT started, starting...", gvr)
+		// we have not started the downstream resource yet
+		// Get the TaskLoop referenced by the Run
+		u, err := c.GetUnstructuredFromRun(run)
+		if err != nil {
+			return fmt.Errorf("unable to get unstructured: %+v", err)
+		}
+
+		created, err := c.dynamicClient.Resource(gvr).Namespace(u.GetNamespace()).Create(ctx, u, metav1.CreateOptions{})
+		if err != nil {
+			return fmt.Errorf("unable to create unstructured: %+v", err)
+		}
+		logger.Infof("Created %+v", created)
+	} else {
+		logger.Infof("Resource %s already started", gvr)
+
+		val, err := c.GetConditionFromUnstructured(existing, "Succeeded")
+		if err != nil {
+			return fmt.Errorf("unable to get Succeeded condition: %+v", err)
+		}
+		logger.Infof("Succeeded=%s", val)
+
+		if val == "False" {
+			logger.Infof("Run %s/%s/%s failed", existing.GetAPIVersion(), existing.GetKind(), existing.GetName())
+			run.Status.MarkRunFailed("DownstreamResourceFailed",
+				"Run %s/%s/%s failed", existing.GetAPIVersion(), existing.GetKind(), existing.GetName())
+		} else if val == "True" {
+			logger.Infof("Run %s/%s/%s succeeded", existing.GetAPIVersion(), existing.GetKind(), existing.GetName())
+			run.Status.MarkRunSucceeded("DownstreamResourceSucceeded",
+				"Run %s/%s/%s succeeded", existing.GetAPIVersion(), existing.GetKind(), existing.GetName())
+
+			latestImage, _, err := unstructured.NestedString(existing.Object, "status", "latestImage")
+			if err != nil {
+				return fmt.Errorf("unable to get latestImage: %+v", err)
+			}
+			logger.Infof("latestImage=%s", latestImage)
+			run.Status.Results = append(run.Status.Results, v1alpha1.RunResult{
+				Name:  "latestImage",
+				Value: latestImage,
+			})
+		}
+	}
 
 	// Check if the run was cancelled.  Since updateTaskRunStatus() handled cancelling any running TaskRuns
 	// the only thing to do here is to determine if all running TaskRuns have finished.
@@ -214,6 +247,42 @@ func (c *Reconciler) GetUnstructuredFromRun(run *v1alpha1.Run) (*unstructured.Un
 	return &u, nil
 }
 
+func (c *Reconciler) FindExistingResourceForRun(ctx context.Context, gvr schema.GroupVersionResource, run *v1alpha1.Run) (*unstructured.Unstructured, error) {
+	resources, err := c.dynamicClient.Resource(gvr).Namespace(run.Namespace).List(ctx, metav1.ListOptions{})
+	if err != nil {
+		return nil, err
+	}
+
+	for _, resource := range resources.Items {
+		if len(resource.GetOwnerReferences()) > 0 {
+			ownerUid := resource.GetOwnerReferences()[0].UID
+			if ownerUid == run.UID {
+				return &resource, nil
+			}
+		}
+	}
+
+	return nil, nil
+}
+
+func (c *Reconciler) GetConditionFromUnstructured(existing *unstructured.Unstructured, name string) (string, error) {
+	conditions, _, err := unstructured.NestedSlice(existing.Object, "status", "conditions")
+	if err != nil {
+		return "", err
+	}
+	if len(conditions) == 0 {
+		return "Unknown", nil
+	}
+
+	for _, condition := range conditions {
+		c := condition.(map[string]interface{})
+		if c["type"].(string) == name {
+			return c["status"].(string), nil
+		}
+	}
+	return "", nil
+}
+
 func getOwnerReferences(run *v1alpha1.Run) []metav1.OwnerReference {
 	return []metav1.OwnerReference{{
 		APIVersion: "tekton.dev/v1alpha1",
@@ -222,39 +291,6 @@ func getOwnerReferences(run *v1alpha1.Run) []metav1.OwnerReference {
 		UID:        run.UID,
 	}}
 }
-
-//func (c *Reconciler) retryTaskRun(ctx context.Context, tr *v1beta1.TaskRun) (*v1beta1.TaskRun, error) {
-//	newStatus := *tr.Status.DeepCopy()
-//	newStatus.RetriesStatus = nil
-//	tr.Status.RetriesStatus = append(tr.Status.RetriesStatus, newStatus)
-//	tr.Status.StartTime = nil
-//	tr.Status.CompletionTime = nil
-//	tr.Status.PodName = ""
-//	tr.Status.SetCondition(&apis.Condition{
-//		Type:   apis.ConditionSucceeded,
-//		Status: corev1.ConditionUnknown,
-//	})
-//	return c.pipelineClientSet.TektonV1beta1().TaskRuns(tr.Namespace).UpdateStatus(ctx, tr, metav1.UpdateOptions{})
-//}
-
-//func getParameters(run *v1alpha1.Run, tls *taskloopv1alpha1.TaskLoopSpec, iteration int) []v1beta1.Param {
-//	out := make([]v1beta1.Param, len(run.Spec.Params))
-//	for i, p := range run.Spec.Params {
-//		if p.Name == tls.IterateParam {
-//			if p.Value.Type == v1beta1.ParamTypeString {
-//				// If we got a string param, split it into an array, one item per line
-//				p.Value.ArrayVal = strings.Split(strings.TrimSuffix(p.Value.StringVal, "\n"), "\n")
-//			}
-//			out[i] = v1beta1.Param{
-//				Name:  p.Name,
-//				Value: v1beta1.ArrayOrString{Type: v1beta1.ParamTypeString, StringVal: p.Value.ArrayVal[iteration-1]},
-//			}
-//		} else {
-//			out[i] = run.Spec.Params[i]
-//		}
-//	}
-//	return out
-//}
 
 func getRunAnnotations(run *v1alpha1.Run) map[string]string {
 	// Propagate annotations from Run to TaskRun.
@@ -279,30 +315,3 @@ func getRunLabels(run *v1alpha1.Run, includeRunLabels bool) map[string]string {
 	labels[pipeline.GroupName+runLabelKey] = run.Name
 	return labels
 }
-
-//func propagateTaskLoopLabelsAndAnnotations(run *v1alpha1.Run, meta *metav1.ObjectMeta) {
-//	// Propagate labels from TaskLoop to Run.
-//	if run.ObjectMeta.Labels == nil {
-//		run.ObjectMeta.Labels = make(map[string]string, len(meta.Labels)+1)
-//	}
-//	for key, value := range meta.Labels {
-//		run.ObjectMeta.Labels[key] = value
-//	}
-//	run.ObjectMeta.Labels["kpack.io/v1alpha2"+taskLoopLabelKey] = meta.Name
-//
-//	// Propagate annotations from TaskLoop to Run.
-//	if run.ObjectMeta.Annotations == nil {
-//		run.ObjectMeta.Annotations = make(map[string]string, len(meta.Annotations))
-//	}
-//
-//	for key, value := range meta.Annotations {
-//		run.ObjectMeta.Annotations[key] = value
-//	}
-//}
-
-//func storeTaskLoopSpec(status *taskloopv1alpha1.TaskLoopRunStatus, tls *taskloopv1alpha1.TaskLoopSpec) {
-//	// Only store the TaskLoopSpec once, if it has never been set before.
-//	if status.TaskLoopSpec == nil {
-//		status.TaskLoopSpec = tls
-//	}
-//}
